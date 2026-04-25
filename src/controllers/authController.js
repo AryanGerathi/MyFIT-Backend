@@ -1,12 +1,12 @@
 const jwt    = require("jsonwebtoken");
 const crypto = require("crypto");
 const { validationResult } = require("express-validator");
-const User   = require("../models/User");
-const OTP    = require("../models/OTP");
+const User = require("../models/User");
+const OTP  = require("../models/OTP");
 const { sendOTPEmail } = require("../config/mailer");
 
 const MAX_ATTEMPTS    = 5;
-const RESEND_COOLDOWN = 60; // seconds
+const RESEND_COOLDOWN = 60;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -34,13 +34,12 @@ const getOTPExpiry = () =>
 
 const maskedEmail = (email) => {
   const [local, domain] = email.split("@");
-  const visible = local.slice(0, 2);
-  return `${visible}${"*".repeat(local.length - 2)}@${domain}`;
+  return `${local.slice(0, 2)}${"*".repeat(local.length - 2)}@${domain}`;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/signup
-// @desc    Register user → send OTP to email
+// @desc    Register → send OTP to email (OTP required only for signup)
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 const signup = async (req, res) => {
@@ -82,7 +81,7 @@ const signup = async (req, res) => {
       isVerified: false,
     });
 
-    // Generate OTP → delete any old one → save new → send email
+    // Generate & send OTP
     const otp = generateOTP();
     await OTP.deleteMany({ userId: user._id, purpose: "signup" });
     await OTP.create({
@@ -109,7 +108,7 @@ const signup = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/login
-// @desc    Verify email+password → send OTP to email
+// @desc    Verify email + password → return JWT directly (no OTP for login)
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 const login = async (req, res) => {
@@ -128,35 +127,37 @@ const login = async (req, res) => {
     // Find user — explicitly select password field
     const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
     if (!user) {
-      return res.status(401).json({ success: false, message: "Invalid email or password." });
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password.",
+      });
     }
 
     if (!user.isActive) {
-      return res.status(403).json({ success: false, message: "Account deactivated. Contact support." });
+      return res.status(403).json({
+        success: false,
+        message: "Account deactivated. Contact support.",
+      });
+    }
+
+    // Must have completed signup OTP verification
+    if (!user.isVerified) {
+      return res.status(403).json({
+        success: false,
+        message: "Account not verified. Please complete signup verification first.",
+      });
     }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: "Invalid email or password." });
+      return res.status(401).json({
+        success: false,
+        message: "Invalid email or password.",
+      });
     }
 
-    // Credentials OK → send OTP to email
-    const otp = generateOTP();
-    await OTP.deleteMany({ userId: user._id, purpose: "login" });
-    await OTP.create({
-      userId:    user._id,
-      email:     user.email,
-      purpose:   "login",
-      otpHash:   otp,
-      expiresAt: getOTPExpiry(),
-    });
-    await sendOTPEmail(user.email, otp, "login");
-
-    return res.status(200).json({
-      success: true,
-      message: `OTP sent to ${maskedEmail(user.email)}. Check your inbox.`,
-      userId:  user._id,
-    });
+    // ✅ All checks passed — return JWT directly, no OTP needed
+    return sendTokenResponse(user, 200, res);
   } catch (error) {
     console.error("login error:", error.message);
     return res.status(500).json({ success: false, message: "Server error. Please try again." });
@@ -165,7 +166,7 @@ const login = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/verify-otp
-// @desc    Verify OTP → return JWT
+// @desc    Verify signup OTP → mark user verified + return JWT
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 const verifyOTP = async (req, res) => {
@@ -181,7 +182,14 @@ const verifyOTP = async (req, res) => {
 
     const { userId, otp, purpose } = req.body;
 
-    // Find OTP record — include hidden otpHash field
+    // Only "signup" purpose is valid now
+    if (purpose !== "signup") {
+      return res.status(400).json({
+        success: false,
+        message: "OTP verification is only used for signup.",
+      });
+    }
+
     const otpRecord = await OTP.findOne({ userId, purpose }).select("+otpHash");
     if (!otpRecord) {
       return res.status(400).json({
@@ -190,7 +198,6 @@ const verifyOTP = async (req, res) => {
       });
     }
 
-    // Check expiry
     if (otpRecord.expiresAt < new Date()) {
       await otpRecord.deleteOne();
       return res.status(400).json({
@@ -199,7 +206,6 @@ const verifyOTP = async (req, res) => {
       });
     }
 
-    // Check max attempts
     if (otpRecord.attempts >= MAX_ATTEMPTS) {
       await otpRecord.deleteOne();
       return res.status(429).json({
@@ -208,7 +214,6 @@ const verifyOTP = async (req, res) => {
       });
     }
 
-    // Verify OTP
     const isMatch = await otpRecord.verifyOTP(otp);
     if (!isMatch) {
       otpRecord.attempts += 1;
@@ -220,10 +225,9 @@ const verifyOTP = async (req, res) => {
       });
     }
 
-    // ✅ OTP correct — delete it (one-time use)
+    // ✅ OTP correct — delete it + mark user verified
     await otpRecord.deleteOne();
 
-    // Mark user as verified + return JWT
     const user = await User.findByIdAndUpdate(
       userId,
       { isVerified: true },
@@ -243,7 +247,7 @@ const verifyOTP = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/resend-otp
-// @desc    Resend OTP email (60s cooldown)
+// @desc    Resend signup OTP (60s cooldown)
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 const resendOTP = async (req, res) => {
@@ -254,12 +258,20 @@ const resendOTP = async (req, res) => {
       return res.status(400).json({ success: false, message: "userId and purpose are required." });
     }
 
+    if (purpose !== "signup") {
+      return res.status(400).json({ success: false, message: "OTP resend is only for signup." });
+    }
+
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found." });
     }
 
-    // Enforce 60s cooldown
+    if (user.isVerified) {
+      return res.status(400).json({ success: false, message: "Account is already verified." });
+    }
+
+    // Enforce cooldown
     const existing = await OTP.findOne({ userId, purpose });
     if (existing) {
       const secondsAgo = (Date.now() - new Date(existing.createdAt).getTime()) / 1000;
@@ -272,10 +284,8 @@ const resendOTP = async (req, res) => {
       }
     }
 
-    // Delete old OTP → create new → send email
     await OTP.deleteMany({ userId, purpose });
     const otp = generateOTP();
-
     await OTP.create({
       userId,
       email:     user.email,

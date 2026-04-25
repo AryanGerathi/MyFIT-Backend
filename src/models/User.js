@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
+const bcrypt   = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
   {
@@ -32,14 +32,15 @@ const userSchema = new mongoose.Schema(
       enum: ["user", "creator"],
       default: "user",
     },
-    isVerified: {
-      type: Boolean,
-      default: false,
+    isVerified: { type: Boolean, default: false },
+    isActive:   { type: Boolean, default: true  },
+
+    // ── Profile image stored in Cloudinary ────────────────────────────────────
+    profileImage: {
+      url:      { type: String, default: "" },
+      publicId: { type: String, default: "" },
     },
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
+
     creatorProfile: {
       bio:            { type: String, default: "" },
       specialization: { type: String, default: "" },
@@ -71,6 +72,7 @@ userSchema.methods.toSafeObject = function () {
     phone:          this.phone,
     role:           this.role,
     isVerified:     this.isVerified,
+    profileImage:   this.profileImage,
     creatorProfile: this.creatorProfile,
     createdAt:      this.createdAt,
   };
