@@ -29,28 +29,31 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["user", "creator"],
+      enum: ["user", "creator", "admin"],
       default: "user",
     },
     isVerified: { type: Boolean, default: false },
     isActive:   { type: Boolean, default: true  },
 
-    // ── Profile image stored in Cloudinary ────────────────────────────────────
     profileImage: {
       url:      { type: String, default: "" },
       publicId: { type: String, default: "" },
     },
 
     creatorProfile: {
-      bio:            { type: String, default: "" },
-      specialization: { type: String, default: "" },
-      verified:       { type: Boolean, default: false },
+      bio:             { type: String,   default: ""    },
+      specialization:  { type: String,   default: ""    },
+      verified:        { type: Boolean,  default: false },
+      dailyPrice:      { type: Number,   default: 800   },
+      monthlyPrice:    { type: Number,   default: 12000 },
+      monthlySessions: { type: Number,   default: 20    },
+      // ── NEW: available time slots set by creator ──────────────────────────
+      timeSlots:       { type: [String], default: []    },
     },
   },
   { timestamps: true }
 );
 
-// Hash password before save
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
   const salt = await bcrypt.genSalt(12);
@@ -58,12 +61,10 @@ userSchema.pre("save", async function (next) {
   next();
 });
 
-// Compare plain password with hash
 userSchema.methods.comparePassword = async function (candidate) {
   return bcrypt.compare(candidate, this.password);
 };
 
-// Return user without sensitive fields
 userSchema.methods.toSafeObject = function () {
   return {
     _id:            this._id,

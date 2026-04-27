@@ -39,7 +39,6 @@ const maskedEmail = (email) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/signup
-// @desc    Register → send OTP to email (OTP required only for signup)
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 const signup = async (req, res) => {
@@ -55,7 +54,6 @@ const signup = async (req, res) => {
 
     const { name, email, phone, countryCode = "+91", password, role } = req.body;
 
-    // Check duplicate email
     if (await User.findOne({ email: email.toLowerCase() })) {
       return res.status(409).json({
         success: false,
@@ -63,7 +61,6 @@ const signup = async (req, res) => {
       });
     }
 
-    // Check duplicate phone
     if (await User.findOne({ "phone.number": phone, "phone.countryCode": countryCode })) {
       return res.status(409).json({
         success: false,
@@ -71,7 +68,6 @@ const signup = async (req, res) => {
       });
     }
 
-    // Create user (unverified until OTP confirmed)
     const user = await User.create({
       name,
       email,
@@ -81,7 +77,6 @@ const signup = async (req, res) => {
       isVerified: false,
     });
 
-    // Generate & send OTP
     const otp = generateOTP();
     await OTP.deleteMany({ userId: user._id, purpose: "signup" });
     await OTP.create({
@@ -108,7 +103,6 @@ const signup = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/login
-// @desc    Verify email + password → return JWT directly (no OTP for login)
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 const login = async (req, res) => {
@@ -124,23 +118,15 @@ const login = async (req, res) => {
 
     const { email, password } = req.body;
 
-    // Find user — explicitly select password field
     const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password.",
-      });
+      return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
 
     if (!user.isActive) {
-      return res.status(403).json({
-        success: false,
-        message: "Account deactivated. Contact support.",
-      });
+      return res.status(403).json({ success: false, message: "Account deactivated. Contact support." });
     }
 
-    // Must have completed signup OTP verification
     if (!user.isVerified) {
       return res.status(403).json({
         success: false,
@@ -150,13 +136,9 @@ const login = async (req, res) => {
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password.",
-      });
+      return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
 
-    // ✅ All checks passed — return JWT directly, no OTP needed
     return sendTokenResponse(user, 200, res);
   } catch (error) {
     console.error("login error:", error.message);
@@ -166,7 +148,6 @@ const login = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/verify-otp
-// @desc    Verify signup OTP → mark user verified + return JWT
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 const verifyOTP = async (req, res) => {
@@ -182,7 +163,6 @@ const verifyOTP = async (req, res) => {
 
     const { userId, otp, purpose } = req.body;
 
-    // Only "signup" purpose is valid now
     if (purpose !== "signup") {
       return res.status(400).json({
         success: false,
@@ -200,10 +180,7 @@ const verifyOTP = async (req, res) => {
 
     if (otpRecord.expiresAt < new Date()) {
       await otpRecord.deleteOne();
-      return res.status(400).json({
-        success: false,
-        message: "OTP has expired. Please request a new one.",
-      });
+      return res.status(400).json({ success: false, message: "OTP has expired. Please request a new one." });
     }
 
     if (otpRecord.attempts >= MAX_ATTEMPTS) {
@@ -225,15 +202,9 @@ const verifyOTP = async (req, res) => {
       });
     }
 
-    // ✅ OTP correct — delete it + mark user verified
     await otpRecord.deleteOne();
 
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { isVerified: true },
-      { new: true }
-    );
-
+    const user = await User.findByIdAndUpdate(userId, { isVerified: true }, { new: true });
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found." });
     }
@@ -247,7 +218,6 @@ const verifyOTP = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   POST /api/auth/resend-otp
-// @desc    Resend signup OTP (60s cooldown)
 // @access  Public
 // ─────────────────────────────────────────────────────────────────────────────
 const resendOTP = async (req, res) => {
@@ -271,7 +241,6 @@ const resendOTP = async (req, res) => {
       return res.status(400).json({ success: false, message: "Account is already verified." });
     }
 
-    // Enforce cooldown
     const existing = await OTP.findOne({ userId, purpose });
     if (existing) {
       const secondsAgo = (Date.now() - new Date(existing.createdAt).getTime()) / 1000;
@@ -307,8 +276,7 @@ const resendOTP = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // @route   GET /api/auth/me
-// @desc    Get current logged-in user
-// @access  Private (JWT required)
+// @access  Private
 // ─────────────────────────────────────────────────────────────────────────────
 const getMe = async (req, res) => {
   try {
@@ -320,4 +288,49 @@ const getMe = async (req, res) => {
   }
 };
 
-module.exports = { signup, login, verifyOTP, resendOTP, getMe };
+// ─────────────────────────────────────────────────────────────────────────────
+// @route   PUT /api/auth/update-profile
+// @access  Private
+// ─────────────────────────────────────────────────────────────────────────────
+const updateProfile = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: errors.array()[0].msg,
+        errors:  errors.array().map((e) => ({ field: e.path, message: e.msg })),
+      });
+    }
+
+    const { name, phone, countryCode, specialization, bio } = req.body;
+
+    const updateFields = {
+      name,
+      "phone.number":      phone,
+      "phone.countryCode": countryCode || "+91",
+    };
+
+    if (req.user.role === "creator") {
+      if (specialization !== undefined) updateFields["creatorProfile.specialization"] = specialization;
+      if (bio !== undefined)            updateFields["creatorProfile.bio"] = bio;
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    return res.status(200).json({ success: true, user: user.toSafeObject() });
+  } catch (error) {
+    console.error("updateProfile error:", error.message);
+    return res.status(500).json({ success: false, message: "Could not update profile." });
+  }
+};
+
+module.exports = { signup, login, verifyOTP, resendOTP, getMe, updateProfile };

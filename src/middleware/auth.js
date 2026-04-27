@@ -14,7 +14,9 @@ const protect = async (req, res, next) => {
 
     const token   = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user    = await User.findById(decoded.id);
+
+    // Always fetch fresh from DB — so role changes take effect immediately
+    const user = await User.findById(decoded.id);
 
     if (!user || !user.isActive) {
       return res.status(401).json({

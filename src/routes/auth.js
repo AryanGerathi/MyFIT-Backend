@@ -1,6 +1,13 @@
 const express = require("express");
 const { body } = require("express-validator");
-const { signup, login, verifyOTP, resendOTP, getMe } = require("../controllers/authController");
+const {
+  signup,
+  login,
+  verifyOTP,
+  resendOTP,
+  getMe,
+  updateProfile,
+} = require("../controllers/authController");
 const { protect } = require("../middleware/auth");
 
 const router = express.Router();
@@ -41,12 +48,27 @@ const verifyOTPRules = [
     .isIn(["signup", "login"]).withMessage("purpose must be 'signup' or 'login'"),
 ];
 
+const updateProfileRules = [
+  body("name")
+    .trim().notEmpty().withMessage("Name is required")
+    .isLength({ min: 2 }).withMessage("Name must be at least 2 characters"),
+  body("phone")
+    .trim().matches(/^\d{10}$/).withMessage("Phone must be exactly 10 digits"),
+  body("countryCode")
+    .optional().matches(/^\+\d{1,4}$/).withMessage("Invalid country code"),
+  body("specialization")
+    .optional().trim(),
+  body("bio")
+    .optional().trim(),
+];
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-router.post("/signup",     signupRules,    signup);
-router.post("/login",      loginRules,     login);
-router.post("/verify-otp", verifyOTPRules, verifyOTP);
-router.post("/resend-otp",                 resendOTP);
-router.get("/me",          protect,        getMe);
+router.post("/signup",          signupRules,         signup);
+router.post("/login",           loginRules,          login);
+router.post("/verify-otp",      verifyOTPRules,      verifyOTP);
+router.post("/resend-otp",                           resendOTP);
+router.get("/me",               protect,             getMe);
+router.put("/update-profile",   protect,             updateProfileRules, updateProfile);
 
 module.exports = router;
