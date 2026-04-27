@@ -13,15 +13,23 @@ connectDB();
 // ── Verify Gmail connection on startup ────────────────────────────────────────
 verifyMailer();
 
+// ── Allowed origins ───────────────────────────────────────────────────────────
+const allowedOrigins = new Set([
+  process.env.CLIENT_URL,       // https://aryangerathi.github.io/MyFIT-WEBSITE
+  "http://localhost:8080",
+  "http://localhost:5173",
+  "http://localhost:3000",
+].filter(Boolean));
+
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
-    if (process.env.NODE_ENV === "development" && origin.startsWith("http://localhost")) {
-      return callback(null, true);
-    }
-    if (origin === process.env.CLIENT_URL) return callback(null, true);
-    callback(new Error(`CORS blocked: ${origin}`));
+    if (allowedOrigins.has(origin)) return callback(null, true);
+    const err = new Error(`CORS blocked: ${origin}`);
+    err.status = 403;
+    err.isCors = true;
+    callback(err);
   },
   credentials: true,
 }));
@@ -63,6 +71,9 @@ app.use((req, res) => {
 
 // ── Global error handler ──────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {
+  if (err.isCors) {
+    return res.status(403).json({ success: false, message: err.message });
+  }
   console.error("Unhandled error:", err.stack);
   if (err.message?.includes("Only JPEG") || err.message?.includes("File too large")) {
     return res.status(400).json({ success: false, message: err.message });
