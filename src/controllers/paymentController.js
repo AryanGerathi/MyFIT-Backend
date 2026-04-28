@@ -1,6 +1,7 @@
 const crypto   = require("crypto");
 const razorpay = require("../config/razorpay");
 const Payment  = require("../models/Payment");
+const { generateRoomId, getRoomUrl } = require("../config/jitsi");
 
 const createOrder = async (req, res) => {
   try {
@@ -33,6 +34,7 @@ const verifyPayment = async (req, res) => {
       time,
     } = req.body;
 
+    // ── Verify Razorpay signature ─────────────────────────────────────────────
     const body = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
@@ -43,7 +45,8 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid signature" });
     }
 
-    await Payment.create({
+    // ── Create booking first to get the _id for the room ─────────────────────
+    const booking = await Payment.create({
       userId:            req.user._id,
       creatorId,
       razorpayOrderId:   razorpay_order_id,
@@ -51,12 +54,23 @@ const verifyPayment = async (req, res) => {
       amount,
       commission,
       sessionType,
-      date,
-      time,
-      status: "success",
+      date:   date  || null,
+      time:   time  || null,
+      status: "upcoming",
     });
 
-    res.json({ success: true, message: "Payment verified", paymentId: razorpay_payment_id });
+    // ── Generate unique Jitsi room tied to this booking ───────────────────────
+    const jitsiRoomId  = generateRoomId(booking._id.toString());
+    booking.jitsiRoomId = jitsiRoomId;
+    await booking.save();
+
+    res.json({
+      success:      true,
+      message:      "Payment verified",
+      paymentId:    razorpay_payment_id,
+      jitsiRoomUrl: getRoomUrl(jitsiRoomId),
+      booking,
+    });
   } catch (err) {
     console.error("Verify error:", err);
     res.status(500).json({ success: false, message: "Verification failed" });
