@@ -20,5 +20,15 @@ router.get("/my-bookings", protect, async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to fetch bookings" });
   }
 });
+router.get("/my-creator-bookings", protect, async (req, res) => {
+    try {
+      const bookings = await Payment.find({ creatorId: req.user._id })
+        .sort({ createdAt: -1 })
+        .populate("userId", "name email");
+      res.json({ success: true, bookings });
+    } catch (err) {
+      res.status(500).json({ success: false, message: "Failed to fetch creator bookings" });
+    }
+  });
 
 module.exports = router;
