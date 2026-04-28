@@ -52,6 +52,7 @@ app.use("/api/auth",    authLimiter, require("./routes/auth"));
 app.use("/api/upload",               require("./routes/upload"));
 app.use("/api/creator",              require("./routes/creator"));
 app.use("/api/admin",                require("./routes/admin"));
+app.use("/api/payment",              require("./routes/payment")); // ✅ Razorpay
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
