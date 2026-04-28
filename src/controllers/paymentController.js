@@ -1,13 +1,13 @@
-const crypto = require("crypto");
+const crypto   = require("crypto");
 const razorpay = require("../config/razorpay");
+const Payment  = require("../models/Payment");
 
-// Step 1: Create an order
 const createOrder = async (req, res) => {
   try {
     const { amount, currency = "INR", receipt } = req.body;
 
     const order = await razorpay.orders.create({
-      amount: amount * 100, // paise
+      amount: amount * 100,
       currency,
       receipt: receipt || `receipt_${Date.now()}`,
     });
@@ -19,13 +19,21 @@ const createOrder = async (req, res) => {
   }
 };
 
-// Step 2: Verify payment signature
 const verifyPayment = async (req, res) => {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      creatorId,
+      amount,
+      commission,
+      sessionType,
+      date,
+      time,
+    } = req.body;
 
     const body = razorpay_order_id + "|" + razorpay_payment_id;
-
     const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
       .update(body)
@@ -35,6 +43,19 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid signature" });
     }
 
+    await Payment.create({
+      userId:            req.user._id,
+      creatorId,
+      razorpayOrderId:   razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      amount,
+      commission,
+      sessionType,
+      date,
+      time,
+      status: "success",
+    });
+
     res.json({ success: true, message: "Payment verified", paymentId: razorpay_payment_id });
   } catch (err) {
     console.error("Verify error:", err);
@@ -42,4 +63,4 @@ const verifyPayment = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, verifyPayment }; // ✅ must be here
+module.exports = { createOrder, verifyPayment };
