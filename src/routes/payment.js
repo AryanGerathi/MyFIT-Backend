@@ -1,5 +1,5 @@
-const express  = require("express");
-const router   = express.Router();
+const express    = require("express");
+const router     = express.Router();
 const { protect }                    = require("../middleware/auth");
 const { createOrder, verifyPayment } = require("../controllers/paymentController");
 const Payment    = require("../models/Payment");
@@ -32,6 +32,19 @@ router.post("/withdrawal/request", protect, async (req, res) => {
   } catch (err) {
     console.error("Withdrawal request error:", err);
     res.status(500).json({ success: false, message: "Failed to submit withdrawal request." });
+  }
+});
+
+// ── Creator's own withdrawals ─────────────────────────────────────────────────
+router.get("/my-withdrawals", protect, async (req, res) => {
+  try {
+    const withdrawals = await Withdrawal.find({ creatorId: req.user._id })
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, withdrawals });
+  } catch (err) {
+    console.error("Fetch my-withdrawals error:", err);
+    res.status(500).json({ success: false, message: "Failed to fetch withdrawals." });
   }
 });
 
