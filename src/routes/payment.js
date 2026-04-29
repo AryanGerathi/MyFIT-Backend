@@ -1,9 +1,9 @@
 const express  = require("express");
 const router   = express.Router();
-const { protect }                  = require("../middleware/auth");
+const { protect }                    = require("../middleware/auth");
 const { createOrder, verifyPayment } = require("../controllers/paymentController");
 const Payment  = require("../models/Payment");
-const { getRoomUrl } = require("../config/jitsi");
+const { generateRoomId, getRoomUrl } = require("../config/jitsi");
 
 router.post("/create-order", protect, createOrder);
 router.post("/verify",       protect, verifyPayment);
@@ -36,7 +36,7 @@ router.get("/my-creator-bookings", protect, async (req, res) => {
   }
 });
 
-// ── Get Jitsi room link for a booking (user or creator only) ──────────────────
+// ── Get Jitsi room for a booking — auto-generates if missing ──────────────────
 router.get("/booking/:bookingId/room", protect, async (req, res) => {
   try {
     const booking = await Payment.findById(req.params.bookingId);
@@ -45,7 +45,6 @@ router.get("/booking/:bookingId/room", protect, async (req, res) => {
       return res.status(404).json({ success: false, message: "Booking not found" });
     }
 
-    // Only the paying user OR the assigned creator can access the room
     const requesterId = req.user._id.toString();
     const isUser      = booking.userId.toString()    === requesterId;
     const isCreator   = booking.creatorId.toString() === requesterId;
@@ -54,17 +53,16 @@ router.get("/booking/:bookingId/room", protect, async (req, res) => {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
 
+    // Auto-generate room if missing (handles all bookings made before Jitsi was added)
     if (!booking.jitsiRoomId) {
-      return res.status(400).json({
-        success: false,
-        message: "Room not available. Please complete payment first.",
-      });
+      booking.jitsiRoomId = generateRoomId(booking._id.toString());
+      await booking.save();
     }
 
     res.json({
-      success:  true,
-      roomId:   booking.jitsiRoomId,
-      roomUrl:  getRoomUrl(booking.jitsiRoomId),
+      success: true,
+      roomId:  booking.jitsiRoomId,
+      roomUrl: getRoomUrl(booking.jitsiRoomId),
     });
   } catch (err) {
     console.error("Fetch room error:", err);
