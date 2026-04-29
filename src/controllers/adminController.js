@@ -1,6 +1,6 @@
 const User = require("../models/User");
 
-// ── GET /api/admin/creators — protected ───────────────────────────────────────
+// ── GET /api/admin/creators ───────────────────────────────────────────────────
 exports.getAllCreators = async (req, res) => {
   try {
     const creators = await User.find({ role: "creator" })
@@ -15,7 +15,7 @@ exports.getAllCreators = async (req, res) => {
   }
 };
 
-// ── GET /api/admin/creators/verified — PUBLIC, no auth ────────────────────────
+// ── GET /api/admin/creators/verified — PUBLIC ─────────────────────────────────
 exports.getVerifiedCreators = async (req, res) => {
   try {
     const creators = await User.find({
