@@ -2,11 +2,38 @@ const express  = require("express");
 const router   = express.Router();
 const { protect }                    = require("../middleware/auth");
 const { createOrder, verifyPayment } = require("../controllers/paymentController");
-const Payment  = require("../models/Payment");
+const Payment    = require("../models/Payment");
+const Withdrawal = require("../models/Withdrawal");
 const { generateRoomId, getMeetingUrl } = require("../config/jitsi");
 
 router.post("/create-order", protect, createOrder);
 router.post("/verify",       protect, verifyPayment);
+
+// ── Request withdrawal (creator only) ────────────────────────────────────────
+router.post("/withdrawal/request", protect, async (req, res) => {
+  try {
+    const { amount } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid amount." });
+    }
+
+    if (req.user.role !== "creator") {
+      return res.status(403).json({ success: false, message: "Only creators can request withdrawals." });
+    }
+
+    const withdrawal = await Withdrawal.create({
+      creatorId: req.user._id,
+      amount,
+      status: "pending",
+    });
+
+    res.json({ success: true, message: "Withdrawal request submitted.", withdrawal });
+  } catch (err) {
+    console.error("Withdrawal request error:", err);
+    res.status(500).json({ success: false, message: "Failed to submit withdrawal request." });
+  }
+});
 
 // ── User's own bookings ───────────────────────────────────────────────────────
 router.get("/my-bookings", protect, async (req, res) => {
@@ -36,7 +63,7 @@ router.get("/my-creator-bookings", protect, async (req, res) => {
   }
 });
 
-// ── Get Jitsi room — JWT generated per role (moderator vs participant) ─────────
+// ── Get Jitsi room ────────────────────────────────────────────────────────────
 router.get("/booking/:bookingId/room", protect, async (req, res) => {
   try {
     const booking = await Payment.findById(req.params.bookingId)
@@ -55,7 +82,6 @@ router.get("/booking/:bookingId/room", protect, async (req, res) => {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
 
-    // Auto-generate room if missing (old bookings before Jitsi was added)
     if (!booking.jitsiRoomId) {
       booking.jitsiRoomId = generateRoomId(booking._id.toString());
       await booking.save();
@@ -64,8 +90,6 @@ router.get("/booking/:bookingId/room", protect, async (req, res) => {
     const roomId      = booking.jitsiRoomId;
     const participant = isCreator ? booking.creatorId : booking.userId;
 
-    // Creator gets moderator JWT → starts call immediately, no waiting screen
-    // User gets participant JWT  → joins directly, no login required
     const roomUrl = getMeetingUrl({
       roomId,
       name:        participant.name,

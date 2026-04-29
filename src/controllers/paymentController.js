@@ -34,7 +34,6 @@ const verifyPayment = async (req, res) => {
       time,
     } = req.body;
 
-    // ── Verify Razorpay signature ─────────────────────────────────────────────
     const body = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
@@ -45,7 +44,6 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid signature" });
     }
 
-    // ── Create booking to get _id for the room ────────────────────────────────
     const booking = await Payment.create({
       userId:            req.user._id,
       creatorId,
@@ -59,12 +57,10 @@ const verifyPayment = async (req, res) => {
       status: "upcoming",
     });
 
-    // ── Generate unique Jitsi room tied to this booking ───────────────────────
     const jitsiRoomId   = generateRoomId(booking._id.toString());
     booking.jitsiRoomId = jitsiRoomId;
     await booking.save();
 
-    // ── Populate user info to build the JWT for the paying user ──────────────
     await booking.populate("userId", "name email profileImage");
 
     const jitsiRoomUrl = getMeetingUrl({
@@ -72,7 +68,7 @@ const verifyPayment = async (req, res) => {
       name:        booking.userId.name,
       email:       booking.userId.email,
       avatarUrl:   booking.userId.profileImage?.url || "",
-      isModerator: false,   // user is always participant
+      isModerator: false,
     });
 
     res.json({
