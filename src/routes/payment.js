@@ -3,7 +3,7 @@ const router   = express.Router();
 const { protect }                    = require("../middleware/auth");
 const { createOrder, verifyPayment } = require("../controllers/paymentController");
 const Payment  = require("../models/Payment");
-const { generateRoomId, getRoomUrl } = require("../config/jitsi");
+const { generateRoomId, getMeetingUrl } = require("../config/jitsi");
 
 router.post("/create-order", protect, createOrder);
 router.post("/verify",       protect, verifyPayment);
@@ -36,34 +36,45 @@ router.get("/my-creator-bookings", protect, async (req, res) => {
   }
 });
 
-// ── Get Jitsi room for a booking — auto-generates if missing ──────────────────
+// ── Get Jitsi room — JWT generated per role (moderator vs participant) ─────────
 router.get("/booking/:bookingId/room", protect, async (req, res) => {
   try {
-    const booking = await Payment.findById(req.params.bookingId);
+    const booking = await Payment.findById(req.params.bookingId)
+      .populate("creatorId", "name email profileImage")
+      .populate("userId",    "name email profileImage");
 
     if (!booking) {
       return res.status(404).json({ success: false, message: "Booking not found" });
     }
 
     const requesterId = req.user._id.toString();
-    const isUser      = booking.userId.toString()    === requesterId;
-    const isCreator   = booking.creatorId.toString() === requesterId;
+    const isCreator   = booking.creatorId._id.toString() === requesterId;
+    const isUser      = booking.userId._id.toString()    === requesterId;
 
-    if (!isUser && !isCreator) {
+    if (!isCreator && !isUser) {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
 
-    // Auto-generate room if missing (handles bookings made before Jitsi was added)
+    // Auto-generate room if missing (old bookings before Jitsi was added)
     if (!booking.jitsiRoomId) {
       booking.jitsiRoomId = generateRoomId(booking._id.toString());
       await booking.save();
     }
 
-    res.json({
-      success: true,
-      roomId:  booking.jitsiRoomId,
-      roomUrl: getRoomUrl(booking.jitsiRoomId),
+    const roomId      = booking.jitsiRoomId;
+    const participant = isCreator ? booking.creatorId : booking.userId;
+
+    // Creator gets moderator JWT → starts call immediately, no waiting screen
+    // User gets participant JWT  → joins directly, no login required
+    const roomUrl = getMeetingUrl({
+      roomId,
+      name:        participant.name,
+      email:       participant.email,
+      avatarUrl:   participant.profileImage?.url || "",
+      isModerator: isCreator,
     });
+
+    res.json({ success: true, roomId, roomUrl });
   } catch (err) {
     console.error("Fetch room error:", err);
     res.status(500).json({ success: false, message: "Failed to fetch room link" });

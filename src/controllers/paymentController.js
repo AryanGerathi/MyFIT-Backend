@@ -1,7 +1,7 @@
 const crypto   = require("crypto");
 const razorpay = require("../config/razorpay");
 const Payment  = require("../models/Payment");
-const { generateRoomId, getRoomUrl } = require("../config/jitsi");
+const { generateRoomId, getMeetingUrl } = require("../config/jitsi");
 
 const createOrder = async (req, res) => {
   try {
@@ -64,11 +64,22 @@ const verifyPayment = async (req, res) => {
     booking.jitsiRoomId = jitsiRoomId;
     await booking.save();
 
+    // ── Populate user info to build the JWT for the paying user ──────────────
+    await booking.populate("userId", "name email profileImage");
+
+    const jitsiRoomUrl = getMeetingUrl({
+      roomId:      jitsiRoomId,
+      name:        booking.userId.name,
+      email:       booking.userId.email,
+      avatarUrl:   booking.userId.profileImage?.url || "",
+      isModerator: false,   // user is always participant
+    });
+
     res.json({
       success:      true,
       message:      "Payment verified",
       paymentId:    razorpay_payment_id,
-      jitsiRoomUrl: getRoomUrl(jitsiRoomId),
+      jitsiRoomUrl,
       booking,
     });
   } catch (err) {
