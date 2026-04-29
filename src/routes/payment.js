@@ -53,7 +53,7 @@ router.get("/booking/:bookingId/room", protect, async (req, res) => {
       return res.status(403).json({ success: false, message: "Access denied" });
     }
 
-    // Auto-generate room if missing (handles all bookings made before Jitsi was added)
+    // Auto-generate room if missing (handles bookings made before Jitsi was added)
     if (!booking.jitsiRoomId) {
       booking.jitsiRoomId = generateRoomId(booking._id.toString());
       await booking.save();

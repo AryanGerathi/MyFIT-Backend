@@ -45,7 +45,7 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid signature" });
     }
 
-    // ── Create booking first to get the _id for the room ─────────────────────
+    // ── Create booking to get _id for the room ────────────────────────────────
     const booking = await Payment.create({
       userId:            req.user._id,
       creatorId,
@@ -54,13 +54,13 @@ const verifyPayment = async (req, res) => {
       amount,
       commission,
       sessionType,
-      date:   date  || null,
-      time:   time  || null,
+      date:   date || null,
+      time:   time || null,
       status: "upcoming",
     });
 
     // ── Generate unique Jitsi room tied to this booking ───────────────────────
-    const jitsiRoomId  = generateRoomId(booking._id.toString());
+    const jitsiRoomId   = generateRoomId(booking._id.toString());
     booking.jitsiRoomId = jitsiRoomId;
     await booking.save();
 
