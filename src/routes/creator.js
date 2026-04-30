@@ -8,10 +8,11 @@ const {
   getSlots,
   saveSlots,
   getVerifiedCreators,
+  getBankDetails,
+  saveBankDetails,
 } = require("../controllers/creatorController");
 
 // ── Public ────────────────────────────────────────────────────────────────────
-// GET /api/creator/public — all verified creators (used by Explore & CreatorProfile)
 router.get("/public", getVerifiedCreators);
 
 // ── Pricing ───────────────────────────────────────────────────────────────────
@@ -29,14 +30,32 @@ router.put("/pricing", protect, authorize("creator"), [
 ], savePricing);
 
 // ── Time Slots ────────────────────────────────────────────────────────────────
-// GET /api/creator/slots — fetch creator's saved slots
 router.get("/slots", protect, authorize("creator"), getSlots);
 
-// PUT /api/creator/slots — save creator's selected slots
 router.put("/slots", protect, authorize("creator"), [
   body("timeSlots")
     .isArray().withMessage("timeSlots must be an array.")
     .custom(arr => arr.length <= 15).withMessage("Cannot have more than 15 slots."),
 ], saveSlots);
+
+// ── Bank Details ──────────────────────────────────────────────────────────────
+router.get("/bank-details", protect, authorize("creator"), getBankDetails);
+
+router.put("/bank-details", protect, authorize("creator"), [
+  body("accountHolderName")
+    .notEmpty().withMessage("Account holder name is required."),
+  body("accountNumber")
+    .notEmpty().withMessage("Account number is required.")
+    .isNumeric().withMessage("Account number must contain only digits."),
+  body("ifscCode")
+    .notEmpty().withMessage("IFSC code is required."),
+  body("bankName")
+    .notEmpty().withMessage("Bank name is required."),
+  body("accountType")
+    .isIn(["savings", "current"]).withMessage("Account type must be savings or current."),
+  body("upiId")
+    .optional({ checkFalsy: true })
+    .matches(/^[\w.\-]+@[\w.\-]+$/).withMessage("Invalid UPI ID format."),
+], saveBankDetails);
 
 module.exports = router;
