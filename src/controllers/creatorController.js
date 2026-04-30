@@ -160,3 +160,86 @@ exports.getVerifiedCreators = async (req, res) => {
     return res.status(500).json({ success: false, message: "Could not fetch creators." });
   }
 };
+
+// ── GET /api/creator/bank-details ─────────────────────────────────────────────
+exports.getBankDetails = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id)
+      .select("creatorProfile.bankDetails")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    return res.json({
+      success:     true,
+      bankDetails: user.creatorProfile?.bankDetails ?? null,
+    });
+  } catch (err) {
+    console.error("getBankDetails error:", err);
+    return res.status(500).json({ success: false, message: "Could not fetch bank details." });
+  }
+};
+
+// ── PUT /api/creator/bank-details ─────────────────────────────────────────────
+exports.saveBankDetails = async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      message: errors.array()[0].msg,
+      errors:  errors.array().map((e) => ({ field: e.path, message: e.msg })),
+    });
+  }
+
+  try {
+    const {
+      accountHolderName,
+      accountNumber,
+      ifscCode,
+      bankName,
+      accountType,
+      upiId,
+    } = req.body;
+
+    // Normalize IFSC to uppercase
+    const normalizedIfsc = String(ifscCode).trim().toUpperCase();
+
+    // Validate IFSC format: 4 letters + 0 + 6 alphanumeric
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(normalizedIfsc)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid IFSC code format. Example: SBIN0001234",
+      });
+    }
+
+    const bankDetails = {
+      accountHolderName: String(accountHolderName).trim(),
+      accountNumber:     String(accountNumber).trim(),
+      ifscCode:          normalizedIfsc,
+      bankName:          String(bankName).trim(),
+      accountType:       accountType === "current" ? "current" : "savings",
+      ...(upiId && String(upiId).trim() ? { upiId: String(upiId).trim() } : {}),
+    };
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: { "creatorProfile.bankDetails": bankDetails } },
+      { new: true, runValidators: true }
+    ).select("creatorProfile.bankDetails");
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    return res.json({
+      success:     true,
+      message:     "Bank details saved successfully.",
+      bankDetails: user.creatorProfile.bankDetails,
+    });
+  } catch (err) {
+    console.error("saveBankDetails error:", err);
+    return res.status(500).json({ success: false, message: "Could not save bank details." });
+  }
+};
