@@ -1,22 +1,15 @@
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
-// ── Create reusable transporter ───────────────────────────────────────────────
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD,
-  },
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ── Verify connection on startup ──────────────────────────────────────────────
 const verifyMailer = async () => {
   try {
-    await transporter.verify();
-    console.log("✅ Gmail mailer ready");
+    if (!process.env.RESEND_API_KEY) throw new Error("RESEND_API_KEY is missing");
+    console.log("✅ Resend mailer ready");
   } catch (error) {
-    console.error("❌ Gmail mailer error:", error.message);
-    console.error("   Check GMAIL_USER and GMAIL_APP_PASSWORD in .env");
+    console.error("❌ Resend mailer error:", error.message);
+    console.error("   Check RESEND_API_KEY in .env");
   }
 };
 
@@ -72,7 +65,7 @@ const otpEmailHTML = (otp, purpose, expiresMinutes) => `
               </div>
 
               <p style="margin:0;color:#94a3b8;font-size:13px;line-height:1.6;">
-                If you didn't request this OTP, you can safely ignore this email. Someone may have entered your email by mistake.
+                If you didn't request this OTP, you can safely ignore this email.
               </p>
             </td>
           </tr>
@@ -102,17 +95,18 @@ const sendOTPEmail = async (toEmail, otp, purpose) => {
     ? "MyFit — Verify your email"
     : "MyFit — Your login OTP";
 
-  const info = await transporter.sendMail({
-    from: `"${process.env.EMAIL_FROM_NAME || "MyFit"}" <${process.env.GMAIL_USER}>`,
+  const { data, error } = await resend.emails.send({
+    from: `${process.env.EMAIL_FROM_NAME || "MyFit"} <onboarding@resend.dev>`, // ← swap after domain verified
     to: toEmail,
     subject,
     html: otpEmailHTML(otp, purpose, expiresMinutes),
-    // Plain text fallback
     text: `Your MyFit OTP is: ${otp}\nIt expires in ${expiresMinutes} minutes.\nDo not share this with anyone.`,
   });
 
-  console.log(`📧 OTP email sent to ${toEmail} | MessageId: ${info.messageId}`);
-  return info.messageId;
+  if (error) throw new Error(error.message);
+
+  console.log(`📧 OTP email sent to ${toEmail} | MessageId: ${data.id}`);
+  return data.id;
 };
 
 module.exports = { sendOTPEmail, verifyMailer };
