@@ -1,6 +1,19 @@
 const mongoose = require("mongoose");
 const bcrypt   = require("bcryptjs");
 
+// ── Bank Details sub-schema ───────────────────────────────────────────────────
+const bankDetailsSchema = new mongoose.Schema(
+  {
+    accountHolderName: { type: String, default: "" },
+    accountNumber:     { type: String, default: "" },
+    ifscCode:          { type: String, default: "" },
+    bankName:          { type: String, default: "" },
+    accountType:       { type: String, enum: ["savings", "current"], default: "savings" },
+    upiId:             { type: String, default: "" },
+  },
+  { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -47,8 +60,9 @@ const userSchema = new mongoose.Schema(
       dailyPrice:      { type: Number,   default: 800   },
       monthlyPrice:    { type: Number,   default: 12000 },
       monthlySessions: { type: Number,   default: 20    },
-      // ── NEW: available time slots set by creator ──────────────────────────
       timeSlots:       { type: [String], default: []    },
+      // ── NEW: bank details ─────────────────────────────────────────────────
+      bankDetails:     { type: bankDetailsSchema, default: null },
     },
   },
   { timestamps: true }
