@@ -72,4 +72,30 @@ const deleteProfileImage = async (req, res) => {
   }
 };
 
-module.exports = { uploadProfileImage, deleteProfileImage };
+// ─────────────────────────────────────────────────────────────────────────────
+// @route   POST /api/upload/chat-image
+// @desc    Upload a chat image → Cloudinary (separate folder, not tied to user)
+// @access  Private (JWT required)
+// ─────────────────────────────────────────────────────────────────────────────
+const uploadChatImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No image file provided." });
+    }
+
+    // Use a timestamped publicId so each chat image is unique
+    const folder   = "myfit/chat-images";
+    const publicId = `chat_${req.user._id}_${Date.now()}`;
+    const result   = await uploadToCloudinary(req.file.buffer, folder, publicId);
+
+    return res.status(200).json({
+      success:  true,
+      imageUrl: result.secure_url,
+    });
+  } catch (error) {
+    console.error("uploadChatImage error:", error.message);
+    return res.status(500).json({ success: false, message: "Image upload failed. Please try again." });
+  }
+};
+
+module.exports = { uploadProfileImage, deleteProfileImage, uploadChatImage };
