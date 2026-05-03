@@ -17,7 +17,7 @@ verifyMailer();
 
 // ── Allowed origins ───────────────────────────────────────────────────────────
 const allowedOrigins = new Set([
-  process.env.CLIENT_URL,       // https://aryangerathi.github.io/MyFIT-WEBSITE
+  process.env.CLIENT_URL,
   "http://localhost:8080",
   "http://localhost:5173",
   "http://localhost:3000",
@@ -53,7 +53,8 @@ app.use("/api/upload",               require("./routes/upload"));
 app.use("/api/creator",              require("./routes/creator"));
 app.use("/api/admin",                require("./routes/admin"));
 app.use("/api/payment",              require("./routes/payment"));
-app.use("/api/chat", require("./routes/chat")); // ✅ Razorpay
+app.use("/api/chat",                 require("./routes/chat"));
+app.use("/api/reviews",              require("./routes/reviews")); // ✅ Reviews
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
