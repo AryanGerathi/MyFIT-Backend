@@ -96,7 +96,7 @@ const sendOTPEmail = async (toEmail, otp, purpose) => {
     : "MyFit — Your login OTP";
 
   const { data, error } = await resend.emails.send({
-    from: `${process.env.EMAIL_FROM_NAME || "MyFit"} <onboarding@resend.dev>`, // ← swap after domain verified
+    from: `${process.env.EMAIL_FROM_NAME || "MyFit"} <noreply@myfittt.com>`, // ← swap after domain verified
     to: toEmail,
     subject,
     html: otpEmailHTML(otp, purpose, expiresMinutes),
