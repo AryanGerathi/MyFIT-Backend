@@ -13,7 +13,7 @@ const otpSchema = new mongoose.Schema({
   },
   purpose: {
     type: String,
-    enum: ["signup", "login"],
+    enum: ["signup", "login", "forgot-password"], // ✅ added forgot-password
     required: true,
   },
   // Always stored as bcrypt hash — never plain text

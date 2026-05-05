@@ -228,8 +228,9 @@ const resendOTP = async (req, res) => {
       return res.status(400).json({ success: false, message: "userId and purpose are required." });
     }
 
-    if (purpose !== "signup") {
-      return res.status(400).json({ success: false, message: "OTP resend is only for signup." });
+    // ✅ Now accepts "forgot-password" as a valid purpose
+    if (!["signup", "forgot-password"].includes(purpose)) {
+      return res.status(400).json({ success: false, message: "Invalid purpose." });
     }
 
     const user = await User.findById(userId);
@@ -237,7 +238,8 @@ const resendOTP = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found." });
     }
 
-    if (user.isVerified) {
+    // Only block resend for signup if already verified
+    if (purpose === "signup" && user.isVerified) {
       return res.status(400).json({ success: false, message: "Account is already verified." });
     }
 
@@ -271,6 +273,138 @@ const resendOTP = async (req, res) => {
   } catch (error) {
     console.error("resendOTP error:", error.message);
     return res.status(500).json({ success: false, message: "Server error." });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @route   POST /api/auth/forgot-password
+// @access  Public
+// ─────────────────────────────────────────────────────────────────────────────
+const forgotPassword = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array().map((e) => ({ field: e.path, message: e.msg })),
+      });
+    }
+
+    const { email } = req.body;
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+    // Always return 200 to prevent email enumeration — send a dummy userId
+    // so the frontend doesn't break, but the OTP verify step will fail safely.
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message: "If this email is registered, you'll receive a reset OTP shortly.",
+        userId:  "not-found",
+      });
+    }
+
+    const otp = generateOTP();
+    await OTP.deleteMany({ userId: user._id, purpose: "forgot-password" });
+    await OTP.create({
+      userId:    user._id,
+      email:     user.email,
+      purpose:   "forgot-password",
+      otpHash:   otp,
+      expiresAt: getOTPExpiry(),
+    });
+    await sendOTPEmail(user.email, otp, "forgot-password");
+
+    return res.status(200).json({
+      success: true,
+      message: "A 6-digit OTP has been sent to your email.",
+      userId:  user._id.toString(),
+    });
+  } catch (error) {
+    console.error("forgotPassword error:", error.message);
+    return res.status(500).json({ success: false, message: "Server error. Please try again." });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// @route   POST /api/auth/reset-password
+// @access  Public
+// ─────────────────────────────────────────────────────────────────────────────
+const resetPassword = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array().map((e) => ({ field: e.path, message: e.msg })),
+      });
+    }
+
+    const { userId, otp, newPassword } = req.body;
+
+    // Find the OTP record
+    const otpRecord = await OTP.findOne({ userId, purpose: "forgot-password" }).select("+otpHash");
+    if (!otpRecord) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP not found or already used. Please request a new one.",
+      });
+    }
+
+    // Check expiry
+    if (otpRecord.expiresAt < new Date()) {
+      await otpRecord.deleteOne();
+      return res.status(410).json({
+        success: false,
+        message: "OTP has expired. Please request a new one.",
+      });
+    }
+
+    // Check attempt limit
+    if (otpRecord.attempts >= MAX_ATTEMPTS) {
+      await otpRecord.deleteOne();
+      return res.status(429).json({
+        success: false,
+        message: "Too many incorrect attempts. Please request a new OTP.",
+      });
+    }
+
+    // Verify OTP using the existing bcrypt method on the model
+    const isMatch = await otpRecord.verifyOTP(otp);
+    if (!isMatch) {
+      otpRecord.attempts += 1;
+      await otpRecord.save();
+      const remaining = MAX_ATTEMPTS - otpRecord.attempts;
+      return res.status(400).json({
+        success: false,
+        message: `Incorrect OTP. ${remaining} attempt${remaining === 1 ? "" : "s"} remaining.`,
+      });
+    }
+
+    // OTP valid — delete it so it can't be reused
+    await otpRecord.deleteOne();
+
+    // Find user and update password
+    // The User model's pre-save hook will hash it automatically
+    const user = await User.findById(userId).select("+password");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    user.password = newPassword; // pre-save hook on User model hashes this
+    await user.save();
+
+    console.log(`🔑 Password reset for user: ${user.email}`);
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successfully. Please log in with your new password.",
+    });
+  } catch (error) {
+    console.error("resetPassword error:", error.message);
+    return res.status(500).json({ success: false, message: "Server error. Please try again." });
   }
 };
 
@@ -333,4 +467,4 @@ const updateProfile = async (req, res) => {
   }
 };
 
-module.exports = { signup, login, verifyOTP, resendOTP, getMe, updateProfile };
+module.exports = { signup, login, verifyOTP, resendOTP, getMe, updateProfile, forgotPassword, resetPassword };

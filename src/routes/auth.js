@@ -7,6 +7,8 @@ const {
   resendOTP,
   getMe,
   updateProfile,
+  forgotPassword,  // ✅ new
+  resetPassword,   // ✅ new
 } = require("../controllers/authController");
 const { protect } = require("../middleware/auth");
 
@@ -62,13 +64,33 @@ const updateProfileRules = [
     .optional().trim(),
 ];
 
+// ✅ New: Forgot password — just needs a valid email
+const forgotPasswordRules = [
+  body("email")
+    .trim().isEmail().withMessage("Enter a valid email address"),
+];
+
+// ✅ New: Reset password — userId + OTP + new password
+const resetPasswordRules = [
+  body("userId")
+    .notEmpty().withMessage("userId is required"),
+  body("otp")
+    .trim()
+    .isLength({ min: 6, max: 6 }).withMessage("OTP must be 6 digits")
+    .isNumeric().withMessage("OTP must contain only numbers"),
+  body("newPassword")
+    .isLength({ min: 6 }).withMessage("Password must be at least 6 characters"),
+];
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-router.post("/signup",          signupRules,         signup);
-router.post("/login",           loginRules,          login);
-router.post("/verify-otp",      verifyOTPRules,      verifyOTP);
-router.post("/resend-otp",                           resendOTP);
-router.get("/me",               protect,             getMe);
-router.put("/update-profile",   protect,             updateProfileRules, updateProfile);
+router.post("/signup",           signupRules,          signup);
+router.post("/login",            loginRules,           login);
+router.post("/verify-otp",       verifyOTPRules,       verifyOTP);
+router.post("/resend-otp",                             resendOTP);
+router.post("/forgot-password",  forgotPasswordRules,  forgotPassword);  // ✅ new
+router.post("/reset-password",   resetPasswordRules,   resetPassword);   // ✅ new
+router.get("/me",                protect,              getMe);
+router.put("/update-profile",    protect,              updateProfileRules, updateProfile);
 
 module.exports = router;

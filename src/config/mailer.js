@@ -14,7 +14,21 @@ const verifyMailer = async () => {
 };
 
 // ── HTML Email Template ───────────────────────────────────────────────────────
-const otpEmailHTML = (otp, purpose, expiresMinutes) => `
+const otpEmailHTML = (otp, purpose, expiresMinutes) => {
+  const isForgot = purpose === "forgot-password";
+  const heading  = purpose === "signup"
+    ? "Verify your email"
+    : isForgot
+      ? "Reset your password"
+      : "Login verification";
+
+  const body = purpose === "signup"
+    ? "Thanks for signing up! Use the OTP below to verify your email address."
+    : isForgot
+      ? "We received a request to reset your MyFit password. Use the OTP below to proceed. If you didn't request this, you can safely ignore this email."
+      : "Use the OTP below to complete your login. Never share this with anyone.";
+
+  return `
 <!DOCTYPE html>
 <html>
 <head>
@@ -43,12 +57,10 @@ const otpEmailHTML = (otp, purpose, expiresMinutes) => `
           <tr>
             <td style="padding:40px 40px 32px;">
               <h2 style="margin:0 0 8px;color:#0f172a;font-size:20px;font-weight:600;">
-                ${purpose === "signup" ? "Verify your email" : "Login verification"}
+                ${heading}
               </h2>
               <p style="margin:0 0 28px;color:#64748b;font-size:15px;line-height:1.6;">
-                ${purpose === "signup"
-                  ? "Thanks for signing up! Use the OTP below to verify your email address."
-                  : "Use the OTP below to complete your login. Never share this with anyone."}
+                ${body}
               </p>
 
               <!-- OTP Box -->
@@ -87,16 +99,20 @@ const otpEmailHTML = (otp, purpose, expiresMinutes) => `
 </body>
 </html>
 `;
+};
 
 // ── Send OTP Email ────────────────────────────────────────────────────────────
 const sendOTPEmail = async (toEmail, otp, purpose) => {
   const expiresMinutes = parseInt(process.env.OTP_EXPIRES_MINUTES) || 10;
+
   const subject = purpose === "signup"
     ? "MyFit — Verify your email"
-    : "MyFit — Your login OTP";
+    : purpose === "forgot-password"
+      ? "MyFit — Password Reset OTP"
+      : "MyFit — Your login OTP";
 
   const { data, error } = await resend.emails.send({
-    from: `${process.env.EMAIL_FROM_NAME || "MyFit"} <noreply@myfittt.com>`, // ← swap after domain verified
+    from: `${process.env.EMAIL_FROM_NAME || "MyFit"} <noreply@myfittt.com>`,
     to: toEmail,
     subject,
     html: otpEmailHTML(otp, purpose, expiresMinutes),
