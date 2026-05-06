@@ -11,7 +11,9 @@ router.post("/", protect, async (req, res) => {
       return res.status(400).json({ success: false, message: "All fields are required." });
 
     const userId = req.user._id || req.user.id;
-    if (userId === "admin")
+
+    // Block synthetic admin token AND any admin-role user
+    if (userId === "admin" || req.user.role === "admin")
       return res.status(403).json({ success: false, message: "Admin cannot submit help requests." });
 
     const request = await HelpRequest.create({
@@ -35,7 +37,9 @@ router.post("/", protect, async (req, res) => {
 router.get("/mine", protect, async (req, res) => {
   try {
     const userId = req.user._id || req.user.id;
-    if (userId === "admin")
+
+    // Synthetic admin or any admin role — return empty, they use GET / instead
+    if (userId === "admin" || req.user.role === "admin")
       return res.json({ success: true, requests: [] });
 
     const requests = await HelpRequest
