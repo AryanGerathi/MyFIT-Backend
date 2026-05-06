@@ -15,6 +15,12 @@ const protect = async (req, res, next) => {
     const token   = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+    // ── Allow synthetic admin token (no DB user required) ──────────────────
+    if (decoded.role === "admin" && decoded.id === "admin") {
+      req.user = { id: "admin", role: "admin" };
+      return next();
+    }
+
     // Always fetch fresh from DB — so role changes take effect immediately
     const user = await User.findById(decoded.id);
 
