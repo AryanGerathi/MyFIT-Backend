@@ -18,6 +18,8 @@ verifyMailer();
 // ── Allowed origins ───────────────────────────────────────────────────────────
 const allowedOrigins = new Set([
   process.env.CLIENT_URL,
+  "https://myfittt.com",        // ← add explicitly as fallback
+  "https://www.myfittt.com",    // ← if www is also used
   "http://localhost:8080",
   "http://localhost:5173",
   "http://localhost:3000",

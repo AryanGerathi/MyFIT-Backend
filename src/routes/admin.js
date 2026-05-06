@@ -1,14 +1,32 @@
-const express    = require("express");
-const router     = express.Router();
-const { protect } = require("../middleware/auth");
-const Payment    = require("../models/Payment");
-const Withdrawal = require("../models/Withdrawal");
+const express      = require("express");
+const router       = express.Router();
+const jwt          = require("jsonwebtoken");
+const { protect }  = require("../middleware/auth");
+const Payment      = require("../models/Payment");
+const Withdrawal   = require("../models/Withdrawal");
 const {
   getAllCreators,
   getVerifiedCreators,
   verifyCreator,
   getAllUsers,
 } = require("../controllers/adminController");
+
+// ── ADMIN LOGIN — no auth required ────────────────────────────────────────────
+router.post("/login", (req, res) => {
+  const { password } = req.body;
+
+  if (!password || password !== process.env.ADMIN_PASSWORD) {
+    return res.status(401).json({ success: false, message: "Invalid admin password." });
+  }
+
+  const token = jwt.sign(
+    { id: "admin", role: "admin" },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+
+  res.json({ success: true, token });
+});
 
 // ── PUBLIC — no auth required ─────────────────────────────────────────────────
 router.get("/creators/verified", getVerifiedCreators);
