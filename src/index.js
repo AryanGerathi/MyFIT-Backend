@@ -7,25 +7,20 @@ const { verifyMailer } = require("./config/mailer");
 
 const app = express();
 
-app.set("trust proxy", 1); 
+app.set("trust proxy", 1);
 
-// ── Connect to MongoDB ────────────────────────────────────────────────────────
 connectDB();
-
-// ── Verify Gmail connection on startup ────────────────────────────────────────
 verifyMailer();
 
-// ── Allowed origins ───────────────────────────────────────────────────────────
 const allowedOrigins = new Set([
   process.env.CLIENT_URL,
-  "https://myfittt.com",        // ← add explicitly as fallback
-  "https://www.myfittt.com",    // ← if www is also used
+  "https://myfittt.com",
+  "https://www.myfittt.com",
   "http://localhost:8080",
   "http://localhost:5173",
   "http://localhost:3000",
 ].filter(Boolean));
 
-// ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
@@ -40,7 +35,6 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ── Rate limiting ─────────────────────────────────────────────────────────────
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -56,7 +50,8 @@ app.use("/api/creator",              require("./routes/creator"));
 app.use("/api/admin",                require("./routes/admin"));
 app.use("/api/payment",              require("./routes/payment"));
 app.use("/api/chat",                 require("./routes/chat"));
-app.use("/api/reviews",              require("./routes/reviews")); // ✅ Reviews
+app.use("/api/reviews",              require("./routes/reviews"));
+app.use("/api/help",                 require("./routes/help"));  // ✅ only here
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
@@ -78,17 +73,14 @@ app.use((req, res) => {
 
 // ── Global error handler ──────────────────────────────────────────────────────
 app.use((err, _req, res, _next) => {
-  if (err.isCors) {
+  if (err.isCors)
     return res.status(403).json({ success: false, message: err.message });
-  }
   console.error("Unhandled error:", err.stack);
-  if (err.message?.includes("Only JPEG") || err.message?.includes("File too large")) {
+  if (err.message?.includes("Only JPEG") || err.message?.includes("File too large"))
     return res.status(400).json({ success: false, message: err.message });
-  }
   res.status(500).json({ success: false, message: "Something went wrong." });
 });
 
-// ── Start server ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
   console.log(`\n🚀 Server running on http://localhost:${PORT}`);
