@@ -17,7 +17,7 @@ const protect = async (req, res, next) => {
 
     // ── Allow synthetic admin token (no DB user required) ──────────────────
     if (decoded.role === "admin" && decoded.id === "admin") {
-      req.user = { id: "admin", role: "admin" };
+      req.user = { _id: "admin", id: "admin", role: "admin" };
       return next();
     }
 

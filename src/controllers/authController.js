@@ -228,7 +228,6 @@ const resendOTP = async (req, res) => {
       return res.status(400).json({ success: false, message: "userId and purpose are required." });
     }
 
-    // ✅ Now accepts "forgot-password" as a valid purpose
     if (!["signup", "forgot-password"].includes(purpose)) {
       return res.status(400).json({ success: false, message: "Invalid purpose." });
     }
@@ -238,7 +237,6 @@ const resendOTP = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found." });
     }
 
-    // Only block resend for signup if already verified
     if (purpose === "signup" && user.isVerified) {
       return res.status(400).json({ success: false, message: "Account is already verified." });
     }
@@ -292,11 +290,8 @@ const forgotPassword = async (req, res) => {
     }
 
     const { email } = req.body;
-
     const user = await User.findOne({ email: email.toLowerCase().trim() });
 
-    // Always return 200 to prevent email enumeration — send a dummy userId
-    // so the frontend doesn't break, but the OTP verify step will fail safely.
     if (!user) {
       return res.status(200).json({
         success: true,
@@ -344,7 +339,6 @@ const resetPassword = async (req, res) => {
 
     const { userId, otp, newPassword } = req.body;
 
-    // Find the OTP record
     const otpRecord = await OTP.findOne({ userId, purpose: "forgot-password" }).select("+otpHash");
     if (!otpRecord) {
       return res.status(400).json({
@@ -353,7 +347,6 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    // Check expiry
     if (otpRecord.expiresAt < new Date()) {
       await otpRecord.deleteOne();
       return res.status(410).json({
@@ -362,7 +355,6 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    // Check attempt limit
     if (otpRecord.attempts >= MAX_ATTEMPTS) {
       await otpRecord.deleteOne();
       return res.status(429).json({
@@ -371,7 +363,6 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    // Verify OTP using the existing bcrypt method on the model
     const isMatch = await otpRecord.verifyOTP(otp);
     if (!isMatch) {
       otpRecord.attempts += 1;
@@ -383,20 +374,15 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    // OTP valid — delete it so it can't be reused
     await otpRecord.deleteOne();
 
-    // Find user and update password
-    // The User model's pre-save hook will hash it automatically
     const user = await User.findById(userId).select("+password");
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found." });
     }
 
-    user.password = newPassword; // pre-save hook on User model hashes this
+    user.password = newPassword;
     await user.save();
-
-    console.log(`🔑 Password reset for user: ${user.email}`);
 
     return res.status(200).json({
       success: true,
@@ -414,7 +400,18 @@ const resetPassword = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const getMe = async (req, res) => {
   try {
+    // ✅ Guard: req.user must exist (set by protect middleware)
+    if (!req.user?._id) {
+      return res.status(401).json({ success: false, message: "Not authorized." });
+    }
+
     const user = await User.findById(req.user._id);
+
+    // ✅ Guard: user must exist in DB
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
     return res.status(200).json({ success: true, user: user.toSafeObject() });
   } catch (error) {
     console.error("getMe error:", error.message);
@@ -467,4 +464,8 @@ const updateProfile = async (req, res) => {
   }
 };
 
-module.exports = { signup, login, verifyOTP, resendOTP, getMe, updateProfile, forgotPassword, resetPassword };
+module.exports = {
+  signup, login, verifyOTP, resendOTP,
+  getMe, updateProfile,
+  forgotPassword, resetPassword,
+};

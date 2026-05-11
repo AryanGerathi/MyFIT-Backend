@@ -50,6 +50,11 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid signature" });
     }
 
+    // ✅ Guard: ensure user is authenticated before creating booking
+    if (!req.user?._id) {
+      return res.status(401).json({ success: false, message: "Unauthorized — please log in again." });
+    }
+
     // 2. Save booking to DB
     const booking = await Payment.create({
       userId:            req.user._id,
