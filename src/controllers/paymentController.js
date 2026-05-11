@@ -2,13 +2,16 @@ const crypto   = require("crypto");
 const razorpay = require("../config/razorpay");
 const Payment  = require("../models/Payment");
 const { generateRoomId, getMeetingUrl } = require("../config/jitsi");
+const { sendBookingConfirmation }       = require("../config/whatsapp");
+
+// ── Create Razorpay Order ─────────────────────────────────────────────────────
 
 const createOrder = async (req, res) => {
   try {
     const { amount, currency = "INR", receipt } = req.body;
 
     const order = await razorpay.orders.create({
-      amount: amount * 100,
+      amount:  amount * 100,
       currency,
       receipt: receipt || `receipt_${Date.now()}`,
     });
@@ -19,6 +22,8 @@ const createOrder = async (req, res) => {
     res.status(500).json({ success: false, message: "Order creation failed" });
   }
 };
+
+// ── Verify Payment & Confirm Booking ─────────────────────────────────────────
 
 const verifyPayment = async (req, res) => {
   try {
@@ -34,6 +39,7 @@ const verifyPayment = async (req, res) => {
       time,
     } = req.body;
 
+    // 1. Verify Razorpay signature
     const body = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
@@ -44,6 +50,7 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid signature" });
     }
 
+    // 2. Save booking to DB
     const booking = await Payment.create({
       userId:            req.user._id,
       creatorId,
@@ -57,12 +64,18 @@ const verifyPayment = async (req, res) => {
       status: "upcoming",
     });
 
+    // 3. Generate Jitsi room
     const jitsiRoomId   = generateRoomId(booking._id.toString());
     booking.jitsiRoomId = jitsiRoomId;
     await booking.save();
 
-    await booking.populate("userId", "name email profileImage");
+    // 4. Populate user + creator for response & WhatsApp
+    await booking.populate([
+      { path: "userId",    select: "name email phone profileImage" },
+      { path: "creatorId", select: "name" },
+    ]);
 
+    // 5. Build Jitsi meeting URL
     const jitsiRoomUrl = getMeetingUrl({
       roomId:      jitsiRoomId,
       name:        booking.userId.name,
@@ -71,6 +84,23 @@ const verifyPayment = async (req, res) => {
       isModerator: false,
     });
 
+    // 6. Send WhatsApp confirmation (non-fatal)
+    const countryCode = (booking.userId?.phone?.countryCode || "+91").replace("+", "");
+    const phoneNumber = booking.userId?.phone?.number || "";
+
+    if (phoneNumber) {
+      sendBookingConfirmation(countryCode + phoneNumber, {
+        creatorName: booking.creatorId?.name ?? "Your creator",
+        date:        booking.date
+                       ? new Date(booking.date).toDateString()
+                       : "Monthly plan",
+        time:        booking.time ?? "—",
+        sessionType: booking.sessionType,
+        amount:      Number(booking.amount).toLocaleString("en-IN"),
+      }).catch((err) => console.error("WhatsApp send failed:", err.message));
+    }
+
+    // 7. Respond to client
     res.json({
       success:      true,
       message:      "Payment verified",
@@ -84,4 +114,19 @@ const verifyPayment = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, verifyPayment };
+// ── Get My Bookings ───────────────────────────────────────────────────────────
+
+const getMyBookings = async (req, res) => {
+  try {
+    const bookings = await Payment.find({ userId: req.user._id })
+      .populate("creatorId", "name profileImage creatorProfile")
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, bookings });
+  } catch (err) {
+    console.error("Get bookings error:", err);
+    res.status(500).json({ success: false, message: "Could not fetch bookings" });
+  }
+};
+
+module.exports = { createOrder, verifyPayment, getMyBookings };
