@@ -51,7 +51,7 @@ app.use("/api/admin",                require("./routes/admin"));
 app.use("/api/payment",              require("./routes/payment"));
 app.use("/api/chat",                 require("./routes/chat"));
 app.use("/api/reviews",              require("./routes/reviews"));
-app.use("/api/help",                 require("./routes/help"));  // ✅ only here
+app.use("/api/help",                 require("./routes/help"));
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get("/api/health", (_req, res) => {
@@ -61,6 +61,27 @@ app.get("/api/health", (_req, res) => {
     environment: process.env.NODE_ENV,
     timestamp:   new Date().toISOString(),
   });
+});
+
+// ── TEMPORARY: WhatsApp debug — remove after confirming messages work ─────────
+app.get("/api/test-whatsapp", async (_req, res) => {
+  const { sendBookingConfirmation } = require("./config/whatsapp");
+  try {
+    await sendBookingConfirmation("917042747299", {
+      creatorName: "Shrey",
+      date:        "Tue May 12 2026",
+      time:        "11:00 AM",
+      sessionType: "Single",
+      amount:      "102",
+    });
+    res.json({ success: true, message: "WhatsApp sent! Check your phone." });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      metaError: err.response?.data ?? null,   // ← exact Meta API error
+      message:   err.message,
+    });
+  }
 });
 
 // ── 404 ───────────────────────────────────────────────────────────────────────
