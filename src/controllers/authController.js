@@ -400,14 +400,16 @@ const resetPassword = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const getMe = async (req, res) => {
   try {
-    // ✅ Guard: req.user must exist (set by protect middleware)
     if (!req.user?._id) {
       return res.status(401).json({ success: false, message: "Not authorized." });
     }
 
-    const user = await User.findById(req.user._id);
+    // Admin is a synthetic JWT user — no DB document exists
+    if (req.user.role === "admin") {
+      return res.status(200).json({ success: true, user: req.user });
+    }
 
-    // ✅ Guard: user must exist in DB
+    const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found." });
     }
@@ -425,6 +427,11 @@ const getMe = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 const updateProfile = async (req, res) => {
   try {
+    // Admins have no DB profile to update
+    if (req.user.role === "admin") {
+      return res.status(403).json({ success: false, message: "Admins cannot update profile." });
+    }
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({

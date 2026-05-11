@@ -8,6 +8,11 @@ const { sendBookingConfirmation, sendCreatorAlert } = require("../config/whatsap
 
 const createOrder = async (req, res) => {
   try {
+    // Admins cannot create orders
+    if (req.user.role === "admin") {
+      return res.status(403).json({ success: false, message: "Admins cannot create orders." });
+    }
+
     const { amount, currency = "INR", receipt } = req.body;
 
     const order = await razorpay.orders.create({
@@ -50,8 +55,8 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid signature" });
     }
 
-    // ✅ Guard: ensure user is authenticated before creating booking
-    if (!req.user?._id) {
+    // Guard: admins and unauthenticated requests cannot book
+    if (!req.user?._id || req.user.role === "admin") {
       return res.status(401).json({ success: false, message: "Unauthorized — please log in again." });
     }
 
@@ -139,6 +144,11 @@ const verifyPayment = async (req, res) => {
 
 const getMyBookings = async (req, res) => {
   try {
+    // Admins have no personal bookings — short-circuit cleanly
+    if (req.user.role === "admin") {
+      return res.json({ success: true, bookings: [] });
+    }
+
     const bookings = await Payment.find({ userId: req.user._id })
       .populate("creatorId", "name profileImage creatorProfile")
       .sort({ createdAt: -1 });
