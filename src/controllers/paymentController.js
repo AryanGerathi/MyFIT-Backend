@@ -2,7 +2,7 @@ const crypto   = require("crypto");
 const razorpay = require("../config/razorpay");
 const Payment  = require("../models/Payment");
 const { generateRoomId, getMeetingUrl } = require("../config/jitsi");
-const { sendBookingConfirmation }       = require("../config/whatsapp");
+const { sendBookingConfirmation, sendCreatorAlert } = require("../config/whatsapp");
 
 // ── Create Razorpay Order ─────────────────────────────────────────────────────
 
@@ -69,10 +69,10 @@ const verifyPayment = async (req, res) => {
     booking.jitsiRoomId = jitsiRoomId;
     await booking.save();
 
-    // 4. Populate user + creator for response & WhatsApp
+    // 4. Populate user + creator (both with phone) for WhatsApp
     await booking.populate([
       { path: "userId",    select: "name email phone profileImage" },
-      { path: "creatorId", select: "name" },
+      { path: "creatorId", select: "name phone" },
     ]);
 
     // 5. Build Jitsi meeting URL
@@ -84,20 +84,36 @@ const verifyPayment = async (req, res) => {
       isModerator: false,
     });
 
-    // 6. Send WhatsApp confirmation (non-fatal)
-    const countryCode = (booking.userId?.phone?.countryCode || "+91").replace("+", "");
-    const phoneNumber = booking.userId?.phone?.number || "";
+    const bookingDate = booking.date
+      ? new Date(booking.date).toDateString()
+      : "Monthly plan";
 
-    if (phoneNumber) {
-      sendBookingConfirmation(countryCode + phoneNumber, {
+    // 6a. WhatsApp to USER — booking confirmation
+    const userCC    = (booking.userId?.phone?.countryCode || "+91").replace("+", "");
+    const userPhone = booking.userId?.phone?.number || "";
+
+    if (userPhone) {
+      sendBookingConfirmation(userCC + userPhone, {
         creatorName: booking.creatorId?.name ?? "Your creator",
-        date:        booking.date
-                       ? new Date(booking.date).toDateString()
-                       : "Monthly plan",
+        date:        bookingDate,
         time:        booking.time ?? "—",
         sessionType: booking.sessionType,
         amount:      Number(booking.amount).toLocaleString("en-IN"),
-      }).catch((err) => console.error("WhatsApp send failed:", err.message));
+      }).catch((err) => console.error("WhatsApp (user) failed:", err.message));
+    }
+
+    // 6b. WhatsApp to CREATOR — new booking alert
+    const creatorCC    = (booking.creatorId?.phone?.countryCode || "+91").replace("+", "");
+    const creatorPhone = booking.creatorId?.phone?.number || "";
+
+    if (creatorPhone) {
+      sendCreatorAlert(creatorCC + creatorPhone, {
+        clientName:  booking.userId?.name  ?? "A client",
+        date:        bookingDate,
+        time:        booking.time ?? "—",
+        sessionType: booking.sessionType,
+        amount:      Number(booking.amount).toLocaleString("en-IN"),
+      }).catch((err) => console.error("WhatsApp (creator) failed:", err.message));
     }
 
     // 7. Respond to client
